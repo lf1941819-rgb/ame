@@ -38,20 +38,16 @@ export const Login: React.FC<LoginProps> = ({ onGoToSignup }) => {
     <div className="min-h-screen flex flex-col items-center justify-center bg-black text-white px-6 overflow-hidden">
       {/* 1. LOGO */}
       <div className="mb-8">
-        <BrandLogo className="scale-75 md:scale-90" />
+        <BrandLogo className="scale-110 md:scale-125" />
       </div>
 
       {/* 2. TÍTULO */}
-      <h1 className="text-4xl md:text-5xl font-black text-center uppercase tracking-tight leading-none flex flex-col mb-4">
+      <h1 className="text-5xl md:text-4xl font-black text-center uppercase tracking-tight leading-none flex flex-col mb-4">
         <span className="text-white">Missões que</span>
-        <span className="text-primary">Transformam.</span>
+        <span className="text-primary">Transformam</span>
       </h1>
 
-      {/* 3. DESCRIÇÃO */}
-      <p className="text-sm text-gray-400 text-center max-w-md mt-4 leading-relaxed font-medium">
-        Inteligência de campo para gestão de missões,<br className="hidden md:block" />
-        censo populacional e apoio humanitário estratégico.
-      </p>
+      
 
       {/* 4. FORMULÁRIO */}
       <div className="w-full max-w-sm mt-12">
