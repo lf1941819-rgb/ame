@@ -9,7 +9,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({ className = "", showSlogan
   return (
     <div className={`flex flex-col items-center ${className}`}>
       <img 
-        src="/images/logo.svg" 
+        src="/icons/icon-192.png"
         alt="AME Logo" 
         className="w-24 md:w-28 h-auto object-contain select-none"
         onError={(e) => {
