@@ -37,7 +37,7 @@ export const Login: React.FC<LoginProps> = ({ onGoToSignup }) => {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-black text-white px-6 overflow-hidden">
       {/* 1. LOGO */}
-      <div className="mb-2">
+      <div className="mb-2 pl-4">
         <BrandLogo className="scale-110 md:scale-125" />
       </div>
 
