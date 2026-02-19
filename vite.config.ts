@@ -34,7 +34,7 @@ export default defineConfig(({ mode }) => {
     workbox: {
       navigateFallback: "/index.html",
       globPatterns: ["**/*.{js,css,html,ico,webmanifest}"],
-      globIgnores: ["**/icons/logo-login.svg"],                 //
+      globIgnores: ["**/icons/logo-login.svg"],                 //remove svg from cache
        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // 4MB
     },
   }),
