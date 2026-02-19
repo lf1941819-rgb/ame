@@ -22,6 +22,7 @@ export const Settings: React.FC<{ showToast: (m: string, t?: any) => void }> = (
     const handleBeforeInstall = (e: any) => {
       e.preventDefault();
       setDeferredPrompt(e);
+      showToast("App pronto para instalação! Clique no botão 'Instalar App' para prosseguir.", 'success');
     };
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
