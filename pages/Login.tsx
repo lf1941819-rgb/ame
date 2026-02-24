@@ -21,6 +21,7 @@ export const Login: React.FC<LoginProps> = ({ onGoToSignup }) => {
     setError(null);
     
     try {
+       await supabase.auth.signOut(); // limpa sessão/token quebrado
       const { error: loginError } = await supabase.auth.signInWithPassword({
         email,
         password,

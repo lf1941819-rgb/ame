@@ -3,11 +3,13 @@ import { supabase } from '../lib/supabaseClient';
 import { Point, CensusEntry } from '../types';
 import { getMissionDay, getCutoff, formatMissionDay } from '../lib/missionDay';
 import { useAuth } from '../context/AuthContext';
+import { safeWrite, dedupeKeyFor } from '../src/offline/safeWrite';
 
 export const Census: React.FC<{ showToast: (m: string, t?: any) => void }> = ({ showToast }) => {
   const { profile } = useAuth();
   const [points, setPoints] = useState<Point[]>([]);
   const [entries, setEntries] = useState<Record<string, Partial<CensusEntry>>>({});
+  const [queuedPoints, setQueuedPoints] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [savingPoints, setSavingPoints] = useState<Set<string>>(new Set());
   const [missionDay, setMissionDay] = useState('');
@@ -26,20 +28,26 @@ export const Census: React.FC<{ showToast: (m: string, t?: any) => void }> = ({ 
       const md = getMissionDay(new Date(), c);
       setMissionDay(md);
 
-      const [ptsRes, entsRes] = await Promise.all([
-        supabase.from('points').select('*').eq('active', true).order('name'),
-        supabase.from('census_entries').select('id, point_id, count, error_report, mission_day').eq('mission_day', md)
-      ]);
+    const [ptsRes, entsRes] = await Promise.all([
+  supabase.from('points').select('*').eq('active', true).order('name'),
+  supabase
+    .from('census_entries')
+    .select('id, point_id, count, error_report, mission_day')
+    .eq('mission_day', md),
+]);
 
-      if (ptsRes.error) throw ptsRes.error;
+const err = ptsRes.error ?? entsRes.error;
+if (err) {
+  console.error("[Census:init] Supabase error:", err);
+  throw err;
+}
 
-      setPoints(ptsRes.data || []);
-      
-      const entryMap: Record<string, Partial<CensusEntry>> = {};
-      entsRes.data?.forEach(e => {
-        entryMap[e.point_id] = e;
-      });
-      setEntries(entryMap);
+const entryMap: Record<string, Partial<CensusEntry>> = {};
+for (const e of (entsRes.data ?? [])) {
+  entryMap[e.point_id] = e;
+}
+setPoints(ptsRes.data ?? []);
+setEntries(entryMap);
     } catch (err) {
       console.error("[Census] Error:", err);
       showToast('Erro ao inicializar censo', 'error');
