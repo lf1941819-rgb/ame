@@ -13,46 +13,72 @@ export const Census: React.FC<{ showToast: (m: string, t?: any) => void }> = ({ 
   const [loading, setLoading] = useState(true);
   const [savingPoints, setSavingPoints] = useState<Set<string>>(new Set());
   const [missionDay, setMissionDay] = useState('');
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   const debounceTimers = useRef<Record<string, number>>({});
   const latestEntries = useRef<Record<string, Partial<CensusEntry>>>({});
+  const syncTriggered = useRef(false);
 
   useEffect(() => {
     latestEntries.current = entries;
   }, [entries]);
 
-  const init = useCallback(async () => {
+ const init = useCallback(async () => {
     setLoading(true);
+    
     try {
       const c = await getCutoff();
       const md = getMissionDay(new Date(), c);
       setMissionDay(md);
 
-    const [ptsRes, entsRes] = await Promise.all([
-  supabase.from('points').select('*').eq('active', true).order('name'),
-  supabase
-    .from('census_entries')
-    .select('id, point_id, count, error_report, mission_day')
-    .eq('mission_day', md),
-]);
+      // Tenta carregar do servidor
+      const [ptsRes, entsRes] = await Promise.all([
+        supabase.from('points').select('*').eq('active', true).order('name'),
+        supabase
+          .from('census_entries')
+          .select('id, point_id, count, error_report, mission_day')
+          .eq('mission_day', md),
+      ]);
 
-const err = ptsRes.error ?? entsRes.error;
-if (err) {
-  console.error("[Census:init] Supabase error:", err);
-  throw err;
-}
+      const err = ptsRes.error ?? entsRes.error;
+      if (err) {
+        console.error("[Census:init] Supabase error:", err);
+        throw err;
+      }
 
-const entryMap: Record<string, Partial<CensusEntry>> = {};
-for (const e of (entsRes.data ?? [])) {
-  entryMap[e.point_id] = e;
-}
-setPoints(ptsRes.data ?? []);
-setEntries(entryMap);
-    } catch (err) {
-      console.error("[Census] Error:", err);
-      showToast('Erro ao inicializar censo', 'error');
-    } finally {
-      setLoading(false);
+      // Sucesso: salvar no localStorage como cache
+      const entryMap: Record<string, Partial<CensusEntry>> = {};
+      for (const e of (entsRes.data ?? [])) {
+        entryMap[e.point_id] = e;
+      }
+      localStorage.setItem('census_cache', JSON.stringify({
+        points: ptsRes.data ?? [],
+        entries: entryMap,
+        missionDay: md
+      }));
+      
+      setPoints(ptsRes.data ?? []);
+      setEntries(entryMap);
+    } catch (err: any) {
+      console.error("[Census:init] Error:", err?.message);
+      
+      // Fallback: tentar carregar do cache local
+      try {
+        const cached = localStorage.getItem('census_cache');
+        if (cached) {
+          const { points: cachedPoints, entries: cachedEntries, missionDay: cachedMD } = JSON.parse(cached);
+          console.warn("[Census:init] Usando cache local");
+          setPoints(cachedPoints);
+          setEntries(cachedEntries);
+          setMissionDay(cachedMD);
+          showToast('Usando dados em cache (offline)', 'info');
+        } else {
+          throw new Error('Sem cache local disponível');
+        }
+      } catch (cacheErr) {
+        console.error("[Census:init] Cache fallback failed:", cacheErr);
+        showToast('Erro ao carregar dados', 'error');
+      }
     }
   }, [showToast]);
 
@@ -60,27 +86,50 @@ setEntries(entryMap);
     init();
   }, [init]);
 
-  const persistSave = async (pointId: string, valueToSave: number, errorReport: string | null) => {
-    // Marcamos apenas este ponto como "em salvamento" de forma discreta
+  const persistSave = useCallback(async (pointId: string, valueToSave: number, errorReport: string | null) => {
     setSavingPoints(prev => new Set(prev).add(pointId));
-    
+
     try {
       const payload = {
         mission_day: missionDay,
         point_id: pointId,
         count: valueToSave,
         recorded_by: profile?.id,
-        error_report: errorReport || null
+        error_report: errorReport || null,
       };
-      
-      const { error } = await supabase
-        .from('census_entries')
-        .upsert(payload, { onConflict: 'mission_day,point_id' });
 
-      if (error) throw error;
+      const res = await safeWrite({
+        op: "upsert",
+        table: "census_entries",
+        payload,
+        options: { onConflict: "mission_day,point_id" },
+        dedupeKey: dedupeKeyFor("census_entries", [payload.mission_day, payload.point_id]),
+      });
+
+      // UI: mostra "Pendente" quando enfileirar (offline)
+      if (res.queued) {
+        setQueuedPoints(prev => {
+          const next = new Set(prev);
+          next.add(pointId);
+          return next;
+        });
+      } else {
+        setQueuedPoints(prev => {
+          const next = new Set(prev);
+          next.delete(pointId);
+          return next;
+        });
+      }
     } catch (err: any) {
       console.error("[Census] Auto-save error:", err);
-      showToast('Falha ao salvar censo', 'error');
+      showToast("Falha ao salvar censo", "error");
+
+      // se deu erro, marca como pendente (para não mentir no UI)
+      setQueuedPoints(prev => {
+        const next = new Set(prev);
+        next.add(pointId);
+        return next;
+      });
     } finally {
       setSavingPoints(prev => {
         const next = new Set(prev);
@@ -88,7 +137,43 @@ setEntries(entryMap);
         return next;
       });
     }
-  };
+  }, [missionDay, profile?.id, showToast]);
+
+  // Listener de conectividade
+  useEffect(() => {
+    const handleOnline = async () => {
+      console.log("[Census] Conectado novamente");
+      setIsOnline(true);
+      showToast('Conectado - sincronizando...', 'info');
+      
+      // Aguarda um pouco para garantir que o navigator.onLine está estável
+      await new Promise(r => setTimeout(r, 500));
+      
+      // Se há pontos enfileirados, tenta sincronizar
+      if (queuedPoints.size > 0) {
+        console.log(`[Census] Sincronizando ${queuedPoints.size} pontos`);
+        // A sincronização acontece automaticamente via persistSave
+        // Aqui apenas re-dispara as salvas pendentes
+        for (const pointId of Array.from(queuedPoints)) {
+          const entry = latestEntries.current[pointId] || {};
+          persistSave(pointId, entry.count || 0, entry.error_report || null);
+        }
+      }
+    };
+    
+    const handleOffline = () => {
+      console.log("[Census] Desconectado");
+      setIsOnline(false);
+    };
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [queuedPoints, persistSave, showToast]);
 
   const handleUpdateCount = (pointId: string, value: number) => {
     const newCount = Math.max(0, value);
@@ -154,6 +239,7 @@ setEntries(entryMap);
         {points.map(point => {
           const entry = entries[point.id] || { count: 0, error_report: '' };
           const isSaving = savingPoints.has(point.id);
+          const isQueued = queuedPoints.has(point.id);
 
           return (
             <div key={point.id} className="bg-surface border border-border p-6 rounded-2xl flex flex-col gap-6 hover:border-zinc-700 transition-all group">
@@ -161,10 +247,12 @@ setEntries(entryMap);
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <h3 className="font-bold text-2xl uppercase tracking-tighter group-hover:text-primary transition-colors">{point.name}</h3>
-                    {isSaving && (
+                    {(isSaving || isQueued) && (
                       <div className="flex gap-1 items-center">
                         <span className="w-1 h-1 bg-primary rounded-full animate-pulse"></span>
-                        <span className="text-[8px] text-primary uppercase font-bold tracking-tighter">Sync</span>
+                        <span className="text-[8px] text-primary uppercase font-bold tracking-tighter">
+                          {isSaving ? "Sync" : "Pendente"}
+                        </span>
                       </div>
                     )}
                   </div>

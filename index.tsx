@@ -1,4 +1,4 @@
-import React, { Component, useState, ErrorInfo, ReactNode } from 'react';
+import React, { Component, useState, ErrorInfo, ReactNode, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Login } from './pages/Login';
@@ -67,6 +67,34 @@ const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Validação Offline: Se offline e não tem sessão, força login
+  if (!navigator.onLine && !session) {
+    useEffect(() => {
+      const handleOnline = () => {
+        console.log("[AppContent] Conectado novamente - recarregando");
+        window.location.reload();
+      };
+      
+      window.addEventListener('online', handleOnline);
+      return () => window.removeEventListener('online', handleOnline);
+    }, []);
+
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-4 max-w-md text-center">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+          <h1 className="text-primary text-2xl font-black italic uppercase tracking-tighter">Sem Conexão</h1>
+          <p className="text-muted font-medium mb-4">
+            Você precisa estar conectado à internet para fazer seu primeiro login.
+          </p>
+          <p className="text-[10px] text-muted/70 uppercase font-bold tracking-widest">
+            Aguardando conexão...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const showToast = (message: string, type: ToastType = 'success') => {
     setToast({ message, type });
