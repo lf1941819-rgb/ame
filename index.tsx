@@ -1,6 +1,9 @@
 import React, { Component, useState, ErrorInfo, ReactNode, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { OfflineUnlock } from './components/OfflineUnlock';
+import { hasOfflinePin } from './src/offline/offlinePin';
+import { supabase } from './lib/supabaseClient';
 import { Login } from './pages/Login';
 import { Signup } from './pages/Signup';
 import { Dashboard } from './pages/Dashboard';
@@ -67,34 +70,65 @@ const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  
+  // Estados do Gate Offline
+  const [offlineGate, setOfflineGate] = useState<"checking"|"need-online-first"|"need-pin"|"ok">("checking");
+  const [offlineUnlocked, setOfflineUnlocked] = useState(false);
 
-  // Validação Offline: Se offline e não tem sessão, força login
-  if (!navigator.onLine && !session) {
-    useEffect(() => {
-      const handleOnline = () => {
-        console.log("[AppContent] Conectado novamente - recarregando");
-        window.location.reload();
-      };
-      
-      window.addEventListener('online', handleOnline);
-      return () => window.removeEventListener('online', handleOnline);
-    }, []);
+  // Gate Offline: Verifica conexão e necessidade de PIN
+  useEffect(() => {
+    let cancelled = false;
 
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center p-4">
-        <div className="flex flex-col items-center gap-4 max-w-md text-center">
-          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
-          <h1 className="text-primary text-2xl font-black italic uppercase tracking-tighter">Sem Conexão</h1>
-          <p className="text-muted font-medium mb-4">
-            Você precisa estar conectado à internet para fazer seu primeiro login.
-          </p>
-          <p className="text-[10px] text-muted/70 uppercase font-bold tracking-widest">
-            Aguardando conexão...
-          </p>
-        </div>
-      </div>
-    );
-  }
+    async function checkOfflineGate() {
+      // online: não bloqueia
+      if (navigator.onLine) {
+        if (!cancelled) {
+          setOfflineGate("ok");
+          setOfflineUnlocked(true); // online não exige pin
+        }
+        return;
+      }
+
+      // offline: precisa sessão persistida
+      const { data } = await supabase.auth.getSession();
+      const hasSession = !!data.session;
+
+      if (!hasSession) {
+        if (!cancelled) setOfflineGate("need-online-first");
+        return;
+      }
+
+      // tem sessão mas exige pin
+      const hasPin = hasOfflinePin();
+      if (!hasPin) {
+        // sem PIN: por segurança, exigir voltar online e criar pin
+        if (!cancelled) setOfflineGate("need-online-first");
+        return;
+      }
+
+      if (!cancelled) {
+        setOfflineGate("need-pin");
+        setOfflineUnlocked(false);
+      }
+    }
+
+    checkOfflineGate();
+
+    // ao voltar online, libera
+    const onOnline = () => {
+      if (!cancelled) {
+        setOfflineGate("ok");
+        setOfflineUnlocked(true);
+        window.location.reload(); // opcional, mas garante estado limpo
+      }
+    };
+
+    window.addEventListener("online", onOnline);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("online", onOnline);
+    };
+  }, []);
 
   const showToast = useCallback((message: string, type: ToastType = 'success') => {
     setToast({ message, type });
@@ -103,6 +137,68 @@ const AppContent: React.FC = () => {
   const handleLogout = async () => {
     await signOut();
   };
+
+  // RENDERIZAÇÃO DO GATE OFFLINE
+  // A) Se offlineGate === "checking": tela pequenininha "Verificando conexão…"
+  if (offlineGate === "checking") {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-4 max-w-md text-center">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+          <h1 className="text-primary text-2xl font-black italic uppercase tracking-tighter">Verificando Conexão…</h1>
+          <p className="text-muted font-medium text-sm">
+            Aguarde um momento.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // B) Se offlineGate === "need-online-first": tela "Sem conexão"
+  if (offlineGate === "need-online-first") {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-4 max-w-md text-center">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+          <h1 className="text-primary text-2xl font-black italic uppercase tracking-tighter">Sem Conexão</h1>
+          <p className="text-muted font-medium mb-4">
+            Você precisa estar conectado à internet para fazer seu primeiro login e criar um PIN offline.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-white text-black px-6 py-3 rounded-xl font-bold uppercase tracking-widest text-[10px] hover:bg-zinc-200 transition-all"
+          >
+            Tentar Novamente
+          </button>
+          <p className="text-[10px] text-muted/70 uppercase font-bold tracking-widest">
+            Aguardando conexão...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // C) Se offlineGate === "need-pin" e offlineUnlocked === false: renderizar <OfflineUnlock />
+  if (offlineGate === "need-pin" && !offlineUnlocked) {
+    return (
+      <OfflineUnlock onUnlocked={() => { 
+        setOfflineUnlocked(true); 
+        setOfflineGate("ok"); 
+      }} />
+    );
+  }
+
+  // D) Se offlineGate !== "ok", renderize tela de espera
+  if (offlineGate !== "ok") {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4 animate-in fade-in duration-500">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-[10px] font-black uppercase tracking-widest text-muted">Aguarde...</p>
+        </div>
+      </div>
+    );
+  }
 
   // MEDIDA 1: App Shell Estável
   // Não retornamos null ou spinners que desmontam a árvore React principal.
@@ -120,7 +216,7 @@ const AppContent: React.FC = () => {
         </div>
       );
     }
-    return view === 'signup' ? <Signup onGoToLogin={() => setView('login')} /> : <Login onGoToSignup={() => setView('signup')} />;
+    return view === 'signup' ? <Signup onGoToLogin={() => setView('login')} /> : <Login onGoToSignup={() => setView('signup')} showToast={showToast} />;
   }
 
   // Caso: Perfil Pendente ou Rejeitado (UI Simplificada sem Sidebar)

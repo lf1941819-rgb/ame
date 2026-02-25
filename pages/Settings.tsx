@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
+import { clearOfflinePin, hasOfflinePin } from '../src/offline/offlinePin';
 import { MissionEvent } from '../types';
 import { ConfirmModal } from '../components/ConfirmModal';
 
@@ -17,6 +18,7 @@ export const Settings: React.FC<{ showToast: (m: string, t?: any) => void }> = (
   const [showiOSModal, setShowiOSModal] = useState(false);
   const [idToDelete, setIdToDelete] = useState<string | null>(null);
   const [newEvent, setNewEvent] = useState({ date: '', title: 'Missão' });
+  const [hasPinOffline, setHasPinOffline] = useState(false);
 
   useEffect(() => {
     const handleBeforeInstall = (e: any) => {
@@ -25,6 +27,7 @@ export const Settings: React.FC<{ showToast: (m: string, t?: any) => void }> = (
       showToast("App pronto para instalação! Clique no botão 'Instalar App' para prosseguir.", 'success');
     };
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    setHasPinOffline(hasOfflinePin());
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
   }, []);
 
@@ -43,6 +46,16 @@ export const Settings: React.FC<{ showToast: (m: string, t?: any) => void }> = (
     } else {
       showToast('Navegador não suporta a instalação direta.', 'info');
     }
+  };
+
+  const handleResetOfflinePin = () => {
+    if (!hasPinOffline) {
+      showToast('Nenhum PIN offline configurado', 'info');
+      return;
+    }
+    clearOfflinePin();
+    setHasPinOffline(false);
+    showToast('PIN offline removido. Configure um novo PIN no próximo login.', 'success');
   };
 
   const loadAll = async () => {
@@ -116,13 +129,24 @@ export const Settings: React.FC<{ showToast: (m: string, t?: any) => void }> = (
     <div className="max-w-4xl mx-auto space-y-12">
       <div className="flex flex-col items-center text-center gap-6 mb-12">
         <h1 className="text-3xl font-black uppercase tracking-tight">Gerenciamento Geral</h1>
-        <button 
-          onClick={handleInstallClick}
-          className="bg-white text-black px-6 py-3 rounded-xl font-bold uppercase tracking-widest text-[10px] hover:bg-zinc-200 transition-all flex items-center gap-2"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-          Instalar App
-        </button>
+        <div className="flex flex-col sm:flex-row gap-4">
+          <button 
+            onClick={handleInstallClick}
+            className="bg-white text-black px-6 py-3 rounded-xl font-bold uppercase tracking-widest text-[10px] hover:bg-zinc-200 transition-all flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+            Instalar App
+          </button>
+          {hasPinOffline && (
+            <button
+              onClick={handleResetOfflinePin}
+              className="bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 text-red-400 px-6 py-3 rounded-xl font-bold uppercase tracking-widest text-[10px] transition-all flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+              Resetar PIN Offline
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
