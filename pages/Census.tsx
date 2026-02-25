@@ -18,6 +18,7 @@ export const Census: React.FC<{ showToast: (m: string, t?: any) => void }> = ({ 
   const debounceTimers = useRef<Record<string, number>>({});
   const latestEntries = useRef<Record<string, Partial<CensusEntry>>>({});
   const syncTriggered = useRef(false);
+  const didInit = useRef(false);
 
   useEffect(() => {
     latestEntries.current = entries;
@@ -79,10 +80,14 @@ export const Census: React.FC<{ showToast: (m: string, t?: any) => void }> = ({ 
         console.error("[Census:init] Cache fallback failed:", cacheErr);
         showToast('Erro ao carregar dados', 'error');
       }
+    } finally {
+      setLoading(false);
     }
   }, [showToast]);
 
   useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
     init();
   }, [init]);
 

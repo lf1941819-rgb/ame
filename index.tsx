@@ -1,4 +1,4 @@
-import React, { Component, useState, ErrorInfo, ReactNode, useEffect } from 'react';
+import React, { Component, useState, ErrorInfo, ReactNode, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Login } from './pages/Login';
@@ -96,9 +96,9 @@ const AppContent: React.FC = () => {
     );
   }
 
-  const showToast = (message: string, type: ToastType = 'success') => {
+  const showToast = useCallback((message: string, type: ToastType = 'success') => {
     setToast({ message, type });
-  };
+  }, []);
 
   const handleLogout = async () => {
     await signOut();
