@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient';
 import { Demand, Person, Point } from '../types';
 import { Modal } from '../components/Modal';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { ShareDemandsReportButton } from '../components/ShareDemandsReportButton';
 import { useAuth } from '../context/AuthContext';
 
 export const Demands: React.FC<{ showToast: (m: string, t?: any) => void }> = ({ showToast }) => {
@@ -127,14 +128,17 @@ export const Demands: React.FC<{ showToast: (m: string, t?: any) => void }> = ({
 
   return (
     <div>
-      <div className="flex flex-col  items-center text-center mb-8">
+      <div className="flex flex-col items-center text-center mb-8">
         <h1 className="text-3xl font-black">Demandas da Missão</h1>
-        <button 
-          onClick={handleOpenCreate}
-          className="bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-primary/20 transition-all uppercase tracking-widest text-xs"
-        >
-          + Nova Demanda
-        </button>
+        <div className="flex flex-col sm:flex-row gap-4 mt-4">
+          <button 
+            onClick={handleOpenCreate}
+            className="bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-primary/20 transition-all uppercase tracking-widest text-xs"
+          >
+            + Nova Demanda
+          </button>
+          <ShareDemandsReportButton demands={demands} />
+        </div>
       </div>
 
       <div className="space-y-4">
